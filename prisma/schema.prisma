@@ -1,0 +1,40 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Analysis {
+  id                String           @id
+  createdAt         DateTime         @default(now())
+  filename          String
+  country           String
+  contractText      String
+  result            String
+  overallRisk       String
+  comparisonGroupId String?
+  comparisonGroup   ComparisonGroup? @relation(fields: [comparisonGroupId], references: [id])
+  batchId           String?
+  batch             Batch?           @relation(fields: [batchId], references: [id])
+}
+
+model ComparisonGroup {
+  id        String     @id
+  createdAt DateTime   @default(now())
+  filename  String
+  countries String
+  analyses  Analysis[]
+}
+
+model Batch {
+  id         String     @id
+  createdAt  DateTime   @default(now())
+  name       String?
+  country    String
+  totalFiles Int
+  status     String
+  analyses   Analysis[]
+}
