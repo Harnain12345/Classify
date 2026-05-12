@@ -55,11 +55,16 @@ export default async function ComparePage({ params }: Props) {
   const slugOrder = group.countries.split(",");
   entries.sort((a, b) => slugOrder.indexOf(a.country) - slugOrder.indexOf(b.country));
 
+  const expectedCount = group.countries.split(",").length;
+  const isProcessing = entries.length < expectedCount;
+
   return (
     <ComparisonView
       groupId={groupId}
       filename={group.filename}
       entries={entries}
+      isProcessing={isProcessing}
+      expectedCount={expectedCount}
     />
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -17,7 +17,7 @@ export type ComparisonEntry =
   | { id: string; country: string; countryName: string; flag: string; jurisdiction: Jurisdiction | null; status: "success"; result: AnalysisResult }
   | { id: string; country: string; countryName: string; flag: string; jurisdiction: Jurisdiction | null; status: "failed"; error: string };
 
-type Props = { groupId: string; filename: string; entries: ComparisonEntry[] };
+type Props = { groupId: string; filename: string; entries: ComparisonEntry[]; isProcessing?: boolean; expectedCount?: number };
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -194,7 +194,15 @@ function ComparisonTable({ entries }: { entries: ComparisonEntry[] }) {
 
 // ── main ──────────────────────────────────────────────────────────────────────
 
-export function ComparisonView({ groupId, filename, entries }: Props) {
+export function ComparisonView({ groupId, filename, entries, isProcessing = false, expectedCount = entries.length }: Props) {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isProcessing) return;
+    const id = setInterval(() => router.refresh(), 3000);
+    return () => clearInterval(id);
+  }, [isProcessing, router]);
+
   return (
     <>
       <style>{`@media print { .no-print { display: none !important; } body { background: white; } }`}</style>
@@ -216,7 +224,20 @@ export function ComparisonView({ groupId, filename, entries }: Props) {
               </div>
             </div>
 
-            <SummaryBanner entries={entries} />
+            {isProcessing && (
+              <div className="rounded-xl border border-neutral-200 bg-white px-6 py-5 flex flex-col gap-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium text-neutral-800">Analyzing {entries.length} of {expectedCount} jurisdictions…</span>
+                  <span className="text-neutral-400">{Math.round((entries.length / expectedCount) * 100)}%</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-neutral-100 overflow-hidden">
+                  <div className="h-full rounded-full bg-neutral-900 transition-all duration-700" style={{ width: `${Math.round((entries.length / expectedCount) * 100)}%` }} />
+                </div>
+                <p className="text-xs text-neutral-400">Processing in the background — updates every 3 seconds.</p>
+              </div>
+            )}
+
+            {!isProcessing && <SummaryBanner entries={entries} />}
             <RiskGrid entries={entries} />
             <ComparisonTable entries={entries} />
 
