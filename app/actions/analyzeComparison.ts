@@ -9,9 +9,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MIN_TEXT_LENGTH = 500;
 const MAX_TEXT_LENGTH = 40_000;
 
-export type ComparisonResponse =
-  | { success: true; groupId: string }
-  | { success: false; error: string };
+import type { ComparisonResponse } from "@/lib/analysisSchema";
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
   const pdfParse = (await import("pdf-parse")).default;

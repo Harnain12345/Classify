@@ -23,3 +23,11 @@ export type AnalysisResult = z.infer<typeof AnalysisSchema>;
 export type AnalyzeSuccess = { success: true; data: AnalysisResult; id: string };
 export type AnalyzeError = { success: false; error: string };
 export type AnalyzeResponse = AnalyzeSuccess | AnalyzeError;
+
+export type ComparisonResponse =
+  | { success: true; groupId: string }
+  | { success: false; error: string };
+
+export type BatchResponse =
+  | { success: true; batchId: string }
+  | { success: false; error: string };

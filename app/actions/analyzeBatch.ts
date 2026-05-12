@@ -11,9 +11,7 @@ const MIN_TEXT_LENGTH = 500;
 const MAX_TEXT_LENGTH = 40_000;
 const CONCURRENCY = 4;
 
-export type BatchResponse =
-  | { success: true; batchId: string }
-  | { success: false; error: string };
+import type { BatchResponse } from "@/lib/analysisSchema";
 
 async function extractText(buffer: Buffer): Promise<string> {
   const pdfParse = (await import("pdf-parse")).default;
