@@ -1,5 +1,7 @@
 "use client";
 
+export const maxDuration = 60;
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
