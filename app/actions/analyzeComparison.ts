@@ -1,6 +1,5 @@
 "use server";
 
-import { after } from "next/server";
 import { nanoid } from "nanoid";
 import { getJurisdiction } from "@/lib/jurisdictions";
 import { prisma } from "@/lib/prisma";
@@ -98,22 +97,16 @@ export async function analyzeComparison(formData: FormData): Promise<ComparisonR
     const truncated = contractText.slice(0, MAX_TEXT_LENGTH);
     const groupId = nanoid(10);
 
-    try {
-      await prisma.comparisonGroup.create({
-        data: { id: groupId, filename: file.name, countries: slugs.join(",") },
-      });
-    } catch (err) {
-      console.error("DB create comparison group error:", err);
-      return { success: false, error: `Database error: ${err instanceof Error ? err.message : String(err)}` };
-    }
-
-    after(async () => {
-      await runComparison(groupId, file.name, slugs, truncated);
+    await prisma.comparisonGroup.create({
+      data: { id: groupId, filename: file.name, countries: slugs.join(",") },
     });
+
+    // Run analyses in parallel — all complete before we return
+    await runComparison(groupId, file.name, slugs, truncated);
 
     return { success: true, groupId };
   } catch (err) {
-    console.error("analyzeComparison unhandled error:", err);
-    return { success: false, error: `Unexpected error: ${err instanceof Error ? err.message : String(err)}` };
+    console.error("analyzeComparison error:", err);
+    return { success: false, error: `Error: ${err instanceof Error ? err.message : String(err)}` };
   }
 }

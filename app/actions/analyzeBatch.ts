@@ -1,6 +1,5 @@
 "use server";
 
-import { after } from "next/server";
 import { nanoid } from "nanoid";
 import { prisma } from "@/lib/prisma";
 import { analyzeContractText } from "@/lib/analyzeContract";
@@ -127,10 +126,8 @@ export async function analyzeBatch(formData: FormData): Promise<BatchResponse> {
     return { success: false, error: "Failed to create batch. Please try again." };
   }
 
-  // Process Claude analyses in background — client redirects immediately
-  after(async () => {
-    await processBatch(batchId, slug, fileData);
-  });
+  // Process in background without blocking the response
+  void processBatch(batchId, slug, fileData);
 
   return { success: true, batchId };
 }
