@@ -62,54 +62,58 @@ async function runComparison(
 }
 
 export async function analyzeComparison(formData: FormData): Promise<ComparisonResponse> {
-  const file = formData.get("file") as File | null;
-  const slugsRaw = formData.get("slugs") as string | null;
-
-  if (!file || !slugsRaw) return { success: false, error: "Missing file or countries." };
-
-  let slugs: string[];
   try {
-    slugs = JSON.parse(slugsRaw);
-    if (!Array.isArray(slugs)) throw new Error();
-  } catch {
-    return { success: false, error: "Invalid country selection." };
-  }
+    const file = formData.get("file") as File | null;
+    const slugsRaw = formData.get("slugs") as string | null;
 
-  if (slugs.length < 2 || slugs.length > 6)
-    return { success: false, error: "Select 2 to 6 countries for comparison." };
+    if (!file || !slugsRaw) return { success: false, error: "Missing file or countries." };
 
-  for (const slug of slugs)
-    if (!getJurisdiction(slug)) return { success: false, error: `Unknown jurisdiction: ${slug}` };
+    let slugs: string[];
+    try {
+      slugs = JSON.parse(slugsRaw);
+      if (!Array.isArray(slugs)) throw new Error();
+    } catch {
+      return { success: false, error: "Invalid country selection." };
+    }
 
-  if (file.size > MAX_FILE_SIZE) return { success: false, error: "File exceeds 10 MB." };
+    if (slugs.length < 2 || slugs.length > 6)
+      return { success: false, error: "Select 2 to 6 countries for comparison." };
 
-  // Read buffer eagerly — FormData not available inside after()
-  let contractText: string;
-  try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    contractText = await extractPdfText(buffer);
-  } catch (err) {
-    return { success: false, error: `Could not read the PDF: ${err instanceof Error ? err.message : String(err)}` };
-  }
+    for (const slug of slugs)
+      if (!getJurisdiction(slug)) return { success: false, error: `Unknown jurisdiction: ${slug}` };
 
-  if (contractText.trim().length < MIN_TEXT_LENGTH)
-    return { success: false, error: "Could not extract text. Please upload a text-based PDF, not a scan." };
+    if (file.size > MAX_FILE_SIZE) return { success: false, error: "File exceeds 10 MB." };
 
-  const truncated = contractText.slice(0, MAX_TEXT_LENGTH);
-  const groupId = nanoid(10);
+    let contractText: string;
+    try {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      contractText = await extractPdfText(buffer);
+    } catch (err) {
+      return { success: false, error: `Could not read the PDF: ${err instanceof Error ? err.message : String(err)}` };
+    }
 
-  try {
-    await prisma.comparisonGroup.create({
-      data: { id: groupId, filename: file.name, countries: slugs.join(",") },
+    if (contractText.trim().length < MIN_TEXT_LENGTH)
+      return { success: false, error: "Could not extract text. Please upload a text-based PDF, not a scan." };
+
+    const truncated = contractText.slice(0, MAX_TEXT_LENGTH);
+    const groupId = nanoid(10);
+
+    try {
+      await prisma.comparisonGroup.create({
+        data: { id: groupId, filename: file.name, countries: slugs.join(",") },
+      });
+    } catch (err) {
+      console.error("DB create comparison group error:", err);
+      return { success: false, error: `Database error: ${err instanceof Error ? err.message : String(err)}` };
+    }
+
+    after(async () => {
+      await runComparison(groupId, file.name, slugs, truncated);
     });
-  } catch {
-    return { success: false, error: "Failed to create comparison. Please try again." };
+
+    return { success: true, groupId };
+  } catch (err) {
+    console.error("analyzeComparison unhandled error:", err);
+    return { success: false, error: `Unexpected error: ${err instanceof Error ? err.message : String(err)}` };
   }
-
-  // Process in background — client redirects immediately
-  after(async () => {
-    await runComparison(groupId, file.name, slugs, truncated);
-  });
-
-  return { success: true, groupId };
 }
