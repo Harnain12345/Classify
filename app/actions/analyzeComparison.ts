@@ -1,6 +1,5 @@
 "use server";
 
-import { PDFParse } from "pdf-parse";
 import { nanoid } from "nanoid";
 import { getJurisdiction } from "@/lib/jurisdictions";
 import { prisma } from "@/lib/prisma";
@@ -15,6 +14,7 @@ export type ComparisonResponse =
   | { success: false; error: string };
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
+  const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: buffer });
   const result = await parser.getText();
   await parser.destroy();

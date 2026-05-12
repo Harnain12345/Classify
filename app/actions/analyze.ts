@@ -1,6 +1,5 @@
 "use server";
 
-import { PDFParse } from "pdf-parse";
 import { nanoid } from "nanoid";
 import { getJurisdiction } from "@/lib/jurisdictions";
 import { prisma } from "@/lib/prisma";
@@ -12,6 +11,8 @@ const MIN_TEXT_LENGTH = 500;
 const MAX_TEXT_LENGTH = 40_000;
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
+  // Dynamic import avoids module-init failures in serverless environments
+  const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: buffer });
   const result = await parser.getText();
   await parser.destroy();
@@ -30,8 +31,9 @@ export async function analyzeContract(formData: FormData): Promise<AnalyzeRespon
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
     contractText = await extractPdfText(buffer);
-  } catch {
-    return { success: false, error: "Could not read the PDF. Make sure the file is not corrupted." };
+  } catch (err) {
+    console.error("PDF extraction error:", err);
+    return { success: false, error: `Could not read the PDF: ${err instanceof Error ? err.message : String(err)}` };
   }
 
   if (contractText.trim().length < MIN_TEXT_LENGTH) {
@@ -52,9 +54,10 @@ export async function analyzeContract(formData: FormData): Promise<AnalyzeRespon
     }
     return { success: true, data, id };
   } catch (err: unknown) {
+    console.error("Analysis error:", err);
     const status = (err as { status?: number }).status;
-    if (status === 401) return { success: false, error: "Invalid Anthropic API key. Check your .env.local file." };
-    if (status === 429) return { success: false, error: "Rate limit reached. Please wait a moment and try again." };
-    return { success: false, error: "Analysis failed — please try again." };
+    if (status === 401) return { success: false, error: "Invalid Anthropic API key." };
+    if (status === 429) return { success: false, error: "Rate limit reached. Please wait and try again." };
+    return { success: false, error: `Analysis failed: ${err instanceof Error ? err.message : String(err)}` };
   }
 }

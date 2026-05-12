@@ -2,7 +2,6 @@
 
 import { after } from "next/server";
 import { nanoid } from "nanoid";
-import { PDFParse } from "pdf-parse";
 import { prisma } from "@/lib/prisma";
 import { analyzeContractText } from "@/lib/analyzeContract";
 import { getJurisdiction } from "@/lib/jurisdictions";
@@ -18,6 +17,7 @@ export type BatchResponse =
   | { success: false; error: string };
 
 async function extractText(buffer: Buffer): Promise<string> {
+  const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: buffer });
   const result = await parser.getText();
   await parser.destroy();
