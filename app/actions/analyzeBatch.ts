@@ -17,11 +17,9 @@ export type BatchResponse =
   | { success: false; error: string };
 
 async function extractText(buffer: Buffer): Promise<string> {
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: buffer });
-  const result = await parser.getText();
-  await parser.destroy();
-  return result.text;
+  const pdfParse = (await import("pdf-parse")).default;
+  const data = await pdfParse(buffer);
+  return data.text;
 }
 
 // Simple concurrent runner — no external dependency needed

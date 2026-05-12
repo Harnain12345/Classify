@@ -11,12 +11,9 @@ const MIN_TEXT_LENGTH = 500;
 const MAX_TEXT_LENGTH = 40_000;
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  // Dynamic import avoids module-init failures in serverless environments
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: buffer });
-  const result = await parser.getText();
-  await parser.destroy();
-  return result.text;
+  const pdfParse = (await import("pdf-parse")).default;
+  const data = await pdfParse(buffer);
+  return data.text;
 }
 
 export async function analyzeContract(formData: FormData): Promise<AnalyzeResponse> {
