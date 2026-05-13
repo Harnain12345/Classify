@@ -22,6 +22,9 @@ export const metadata: Metadata = {
   description: "Contractor classification risk analysis in 30 seconds.",
 };
 
+/** Allow multi-country comparisons (parallel Claude calls) to finish before the platform cuts off the request. */
+export const maxDuration = 300;
+
 export default function RootLayout({
   children,
 }: Readonly<{

@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { analyzeContractText } from "@/lib/analyzeContract";
+import { analyzeContractText, normalizeAnalysisFailure } from "@/lib/analyzeContract";
 
 export type RetryResponse =
   | { success: true }
@@ -18,7 +18,8 @@ export async function retryCountryAnalysis(analysisId: string): Promise<RetryRes
       data: { result: JSON.stringify(data), overallRisk: data.overallRisk },
     });
     return { success: true };
-  } catch {
-    return { success: false, error: "Retry failed. Please try again." };
+  } catch (err: unknown) {
+    console.error("[retryCountryAnalysis] error:", err);
+    return { success: false, error: `Retry failed: ${normalizeAnalysisFailure(err)}` };
   }
 }

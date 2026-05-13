@@ -3,7 +3,7 @@
 import { nanoid } from "nanoid";
 import { getJurisdiction } from "@/lib/jurisdictions";
 import { prisma } from "@/lib/prisma";
-import { analyzeContractText } from "@/lib/analyzeContract";
+import { analyzeContractText, normalizeAnalysisFailure } from "@/lib/analyzeContract";
 import type { AnalyzeResponse } from "@/lib/analysisSchema";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -52,9 +52,6 @@ export async function analyzeContract(formData: FormData): Promise<AnalyzeRespon
     return { success: true, data, id };
   } catch (err: unknown) {
     console.error("Analysis error:", err);
-    const status = (err as { status?: number }).status;
-    if (status === 401) return { success: false, error: "Invalid Anthropic API key." };
-    if (status === 429) return { success: false, error: "Rate limit reached. Please wait and try again." };
-    return { success: false, error: `Analysis failed: ${err instanceof Error ? err.message : String(err)}` };
+    return { success: false, error: `Analysis failed: ${normalizeAnalysisFailure(err)}` };
   }
 }

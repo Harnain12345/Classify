@@ -32,6 +32,19 @@ const MODES: { value: Mode; label: string }[] = [
   { value: "batch",   label: "Batch Upload" },
 ];
 
+function formatClientActionFailure(scope: string, err: unknown): string {
+  console.error(`[Classify/${scope}] server action failed:`, err);
+  if (err instanceof Error && err.stack) console.error(err.stack);
+  const detail = err instanceof Error ? err.message : String(err);
+  if (scope === "compare") {
+    return `Comparison could not finish: ${detail}. Try fewer countries at once, or wait a minute if a timeout or rate limit occurred.`;
+  }
+  if (scope === "batch") {
+    return `Batch upload could not finish: ${detail}.`;
+  }
+  return `Something went wrong: ${detail}.`;
+}
+
 function formatBytes(bytes: number): string {
   return bytes < 1024 * 1024
     ? `${(bytes / 1024).toFixed(0)} KB`
@@ -122,7 +135,10 @@ export default function Home() {
         const res = await analyzeContract(fd); stopCycle();
         if (res.success) router.push(`/results/${res.id}`);
         else setStatus({ type: "error", message: res.error });
-      } catch { stopCycle(); setStatus({ type: "error", message: "Something went wrong. Please try again." }); }
+      } catch (e) {
+        stopCycle();
+        setStatus({ type: "error", message: formatClientActionFailure("single", e) });
+      }
 
     } else if (mode === "compare") {
       if (!file || selectedSlugs.length < 2) return;
@@ -132,7 +148,10 @@ export default function Home() {
         const res = await analyzeComparison(fd); stopCycle();
         if (res.success) router.push(`/compare/${res.groupId}`);
         else setStatus({ type: "error", message: res.error });
-      } catch { stopCycle(); setStatus({ type: "error", message: "Something went wrong. Please try again." }); }
+      } catch (e) {
+        stopCycle();
+        setStatus({ type: "error", message: formatClientActionFailure("compare", e) });
+      }
 
     } else {
       if (batchFiles.length < 2 || !slug) return;
@@ -146,7 +165,10 @@ export default function Home() {
         const res = await analyzeBatch(fd); stopCycle();
         if (res.success) router.push(`/batch/${res.batchId}`);
         else setStatus({ type: "error", message: res.error });
-      } catch { stopCycle(); setStatus({ type: "error", message: "Something went wrong. Please try again." }); }
+      } catch (e) {
+        stopCycle();
+        setStatus({ type: "error", message: formatClientActionFailure("batch", e) });
+      }
     }
   };
 

@@ -4,6 +4,24 @@ import type { AnalysisResult } from "@/lib/analysisSchema";
 import { getJurisdiction } from "@/lib/jurisdictions";
 import type { Jurisdiction } from "@/lib/jurisdictions";
 
+/** Normalize API / runtime failures for logs and per-country comparison rows. */
+export function normalizeAnalysisFailure(err: unknown): string {
+  if (typeof err === "object" && err !== null && "status" in err) {
+    const status = (err as { status?: number }).status;
+    if (status === 401) return "Invalid Anthropic API key.";
+    if (status === 429)
+      return "Anthropic rate limit reached. Wait a minute, try fewer countries at once, or retry.";
+    if (status === 500 || status === 503)
+      return "Anthropic service temporarily unavailable. Please try again.";
+  }
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "message" in err) {
+    const m = (err as { message: unknown }).message;
+    if (typeof m === "string" && m.length > 0) return m;
+  }
+  return String(err);
+}
+
 function buildPrompt(contractText: string, j: Jurisdiction): string {
   const riskFactors = j.keyRiskFactors.map((f) => `• ${f}`).join("\n");
   const redFlags = j.redFlagClauses.map((f) => `• ${f}`).join("\n");
@@ -86,7 +104,23 @@ async function callClaude(prompt: string): Promise<string> {
 
 function parseResponse(raw: string): AnalysisResult {
   const stripped = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  return AnalysisSchema.parse(JSON.parse(stripped));
+  let json: unknown;
+  try {
+    json = JSON.parse(stripped);
+  } catch (e) {
+    throw new Error(
+      `Model did not return valid JSON: ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
+  const parsed = AnalysisSchema.safeParse(json);
+  if (!parsed.success) {
+    const detail = parsed.error.issues
+      .slice(0, 6)
+      .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+      .join("; ");
+    throw new Error(`Response did not match schema${detail ? `: ${detail}` : ""}`);
+  }
+  return parsed.data;
 }
 
 export async function analyzeContractText(
@@ -101,8 +135,8 @@ export async function analyzeContractText(
 
   try {
     return parseResponse(raw);
-  } catch {
-    // Retry once on parse failure
+  } catch (parseErr) {
+    console.warn(`[analyzeContractText] first parse failed (${slug}), retrying Claude once:`, parseErr);
     const raw2 = await callClaude(prompt);
     return parseResponse(raw2);
   }

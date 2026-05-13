@@ -101,7 +101,10 @@ function RiskGrid({ entries }: { entries: ComparisonEntry[] }) {
                 <CardContent className="pt-5 flex flex-col gap-2">
                   <p className="text-2xl">{entry.flag}</p>
                   <p className="font-medium text-neutral-700">{entry.countryName}</p>
-                  <span className="inline-flex w-fit items-center rounded-full border border-neutral-200 bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-500">Analysis failed</span>
+                  <span className="inline-flex w-fit items-center rounded-full border border-neutral-200 bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-500">Failed</span>
+                  {entry.error ? (
+                    <p className="text-xs text-red-700 leading-relaxed">{entry.error}</p>
+                  ) : null}
                   <RetryButton analysisId={entry.id} />
                 </CardContent>
               </Card>

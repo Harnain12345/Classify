@@ -1,20 +1,41 @@
 "use server";
 
 import { nanoid } from "nanoid";
-import { getJurisdiction } from "@/lib/jurisdictions";
+import type { ComparisonResponse } from "@/lib/analysisSchema";
+import { analyzeContractText, normalizeAnalysisFailure } from "@/lib/analyzeContract";
+import { COUNTRY_OPTIONS, getJurisdiction } from "@/lib/jurisdictions";
 import { prisma } from "@/lib/prisma";
-import { analyzeContractText } from "@/lib/analyzeContract";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MIN_TEXT_LENGTH = 500;
 const MAX_TEXT_LENGTH = 40_000;
 
-import type { ComparisonResponse } from "@/lib/analysisSchema";
-
 async function extractPdfText(buffer: Buffer): Promise<string> {
   const pdfParse = (await import("pdf-parse")).default;
   const data = await pdfParse(buffer);
   return data.text;
+}
+
+async function persistAnalysisRow(args: {
+  id: string;
+  filename: string;
+  slug: string;
+  contractText: string;
+  groupId: string;
+  resultPayload: unknown;
+  overallRisk: string;
+}) {
+  await prisma.analysis.create({
+    data: {
+      id: args.id,
+      filename: args.filename,
+      country: args.slug,
+      contractText: args.contractText,
+      result: JSON.stringify(args.resultPayload),
+      overallRisk: args.overallRisk,
+      comparisonGroupId: args.groupId,
+    },
+  });
 }
 
 async function runComparison(
@@ -23,39 +44,76 @@ async function runComparison(
   slugs: string[],
   contractText: string
 ) {
+  console.info(
+    `[analyzeComparison] starting parallel analysis for ${slugs.length} countries:`,
+    slugs.join(", ")
+  );
   const settled = await Promise.allSettled(
     slugs.map((slug) => analyzeContractText(contractText, slug))
   );
 
-  await Promise.allSettled(
+  const writeOutcomes = await Promise.allSettled(
     settled.map(async (outcome, i) => {
-      const slug = slugs[i];
+      const slug = slugs[i]!;
       const id = nanoid(10);
       if (outcome.status === "fulfilled") {
         const data = outcome.value;
-        await prisma.analysis.create({
-          data: {
-            id, filename, country: slug,
+        try {
+          await persistAnalysisRow({
+            id,
+            filename,
+            slug,
             contractText,
-            result: JSON.stringify(data),
+            groupId,
+            resultPayload: data,
             overallRisk: data.overallRisk,
-            comparisonGroupId: groupId,
-          },
-        });
-      } else {
-        const msg = outcome.reason instanceof Error ? outcome.reason.message : "Analysis failed";
-        await prisma.analysis.create({
-          data: {
-            id, filename, country: slug,
+          });
+        } catch (dbErr) {
+          console.error(`[analyzeComparison] DB write failed (success path) for ${slug}:`, dbErr);
+          await persistAnalysisRow({
+            id: nanoid(10),
+            filename,
+            slug,
             contractText,
-            result: JSON.stringify({ __error: true, message: msg }),
+            groupId,
+            resultPayload: {
+              __error: true,
+              message: `Could not save result: ${dbErr instanceof Error ? dbErr.message : String(dbErr)}`,
+            },
             overallRisk: "error",
-            comparisonGroupId: groupId,
-          },
-        });
+          }).catch((e2) =>
+            console.error(`[analyzeComparison] could not persist fallback error row for ${slug}:`, e2)
+          );
+        }
+      } else {
+        const reason = normalizeAnalysisFailure(outcome.reason);
+        const countryLabel = COUNTRY_OPTIONS.find((c) => c.slug === slug)?.name ?? slug;
+        const message = `Analysis failed for ${countryLabel}: ${reason}`;
+        console.error(`[analyzeComparison] ${message}`, outcome.reason);
+        try {
+          await persistAnalysisRow({
+            id,
+            filename,
+            slug,
+            contractText,
+            groupId,
+            resultPayload: { __error: true, message },
+            overallRisk: "error",
+          });
+        } catch (dbErr) {
+          console.error(`[analyzeComparison] DB write failed (error path) for ${slug}:`, dbErr);
+        }
       }
     })
   );
+
+  const writeFailures = writeOutcomes.filter((o) => o.status === "rejected");
+  if (writeFailures.length > 0) {
+    console.error(
+      "[analyzeComparison] some DB writes rejected after allSettled:",
+      writeFailures.map((o) => (o.status === "rejected" ? o.reason : null))
+    );
+  }
 }
 
 export async function analyzeComparison(formData: FormData): Promise<ComparisonResponse> {
@@ -99,12 +157,14 @@ export async function analyzeComparison(formData: FormData): Promise<ComparisonR
       data: { id: groupId, filename: file.name, countries: slugs.join(",") },
     });
 
-    // Run analyses in parallel — all complete before we return
+    // Run analyses in parallel — each jurisdiction settles independently (Promise.allSettled).
     await runComparison(groupId, file.name, slugs, truncated);
 
+    console.info(`[analyzeComparison] completed group ${groupId}`);
     return { success: true, groupId };
   } catch (err) {
-    console.error("analyzeComparison error:", err);
-    return { success: false, error: `Error: ${err instanceof Error ? err.message : String(err)}` };
+    console.error("[analyzeComparison] fatal error (before or after runComparison):", err);
+    if (err instanceof Error && err.stack) console.error(err.stack);
+    return { success: false, error: `Comparison failed: ${normalizeAnalysisFailure(err)}` };
   }
 }
